@@ -52,20 +52,22 @@ public class HttpPipeliningHandler extends BufferedWriteHandler {
 
     @Override
     public synchronized void writeRequested(final ChannelHandlerContext ctx, final MessageEvent e) throws Exception {
-        final OrderedDownstreamMessageEvent currentEvent = (OrderedDownstreamMessageEvent) e;
-        if (currentEvent.getSequence() == nextRequiredSequence) {
-            super.writeRequested(ctx, currentEvent);
-            ++nextRequiredSequence;
+        if (e instanceof OrderedDownstreamMessageEvent) {
+            final OrderedDownstreamMessageEvent currentEvent = (OrderedDownstreamMessageEvent) e;
+            if (currentEvent.getSequence() == nextRequiredSequence) {
+                super.writeRequested(ctx, currentEvent);
+                ++nextRequiredSequence;
 
-            while (holdingQueue.peek().getSequence() == nextRequiredSequence++) {
-                super.writeRequested(ctx, holdingQueue.element());
-            }
+                while (holdingQueue.peek().getSequence() == nextRequiredSequence++) {
+                    super.writeRequested(ctx, holdingQueue.element());
+                }
 
-            if (e.getChannel().isWritable()) {
-                flush();
+                if (e.getChannel().isWritable()) {
+                    flush();
+                }
+            } else {
+                holdingQueue.add(currentEvent);
             }
-        } else {
-            holdingQueue.add(currentEvent);
         }
     }
 
