@@ -6,6 +6,9 @@ import org.jboss.netty.channel.*;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.jboss.netty.handler.codec.http.*;
+import org.jboss.netty.util.HashedWheelTimer;
+import org.jboss.netty.util.Timeout;
+import org.jboss.netty.util.TimerTask;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -15,15 +18,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static org.jboss.netty.buffer.ChannelBuffers.EMPTY_BUFFER;
 import static org.jboss.netty.buffer.ChannelBuffers.copiedBuffer;
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.*;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.Values.CHUNKED;
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Values.KEEP_ALIVE;
 import static org.jboss.netty.handler.codec.http.HttpResponseStatus.*;
 import static org.jboss.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 import static org.jboss.netty.util.CharsetUtil.*;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class HttpPipeliningHandlerTest {
@@ -41,6 +46,8 @@ public class HttpPipeliningHandlerTest {
 
     private CountDownLatch responsesIn;
     private final List<String> responses = new ArrayList<String>(2);
+
+    private HashedWheelTimer timer;
 
     @Before
     public void setUp() {
@@ -77,10 +84,14 @@ public class HttpPipeliningHandlerTest {
         });
 
         serverBootstrap.bind(HOST_ADDR);
+
+        timer = new HashedWheelTimer();
     }
 
     @After
     public void shutDown() {
+        timer.stop();
+
         serverBootstrap.shutdown();
         serverBootstrap.releaseExternalResources();
         clientBootstrap.shutdown();
@@ -110,21 +121,27 @@ public class HttpPipeliningHandlerTest {
 
         responsesIn.await(RESPONSE_TIMEOUT, MILLISECONDS);
 
-        assertEquals(SOME_RESPONSE_TEXT + PATH1, responses.get(0));
-        assertEquals(SOME_RESPONSE_TEXT + PATH2, responses.get(1));
+        assertTrue(responses.contains(SOME_RESPONSE_TEXT + PATH1));
+        assertTrue(responses.contains(SOME_RESPONSE_TEXT + PATH2));
     }
 
     public class ClientHandler extends SimpleChannelUpstreamHandler {
         @Override
         public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent e) {
-            final HttpResponse response = (HttpResponse) e.getMessage();
-            responses.add(response.getContent().toString(UTF_8));
-            responsesIn.countDown();
+            final Object message = e.getMessage();
+            if (message instanceof HttpChunk) {
+                final HttpChunk response = (HttpChunk) e.getMessage();
+                if (response.getContent().readable()) {
+                    responses.add(response.getContent().toString(UTF_8));
+                } else {
+                    responsesIn.countDown();
+                }
+            }
         }
     }
 
-    public static class ServerHandler extends SimpleChannelUpstreamHandler {
-        ChannelFuture path1ResponseFuture;
+    public class ServerHandler extends SimpleChannelUpstreamHandler {
+        private final AtomicBoolean sendFinalChunk = new AtomicBoolean(false);
 
         @Override
         public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent e) throws InterruptedException {
@@ -133,31 +150,61 @@ public class HttpPipeliningHandlerTest {
             final int sequence = ((OrderedUpstreamMessageEvent) e).getSequence();
             final String uri = request.getUri();
 
-            if (request.getUri().equals(PATH1)) {
-                path1ResponseFuture = Channels.future(e.getChannel());
-                path1ResponseFuture.addListener(new ChannelFutureListener() {
-                    @Override
-                    public void operationComplete(ChannelFuture channelFuture) throws Exception {
-                        final HttpResponse response = createResponse(uri);
-                        ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, ctx.getChannel(),
-                                Channels.future(ctx.getChannel()), response, e.getRemoteAddress()));
-                    }
-                });
-            } else {
-                final HttpResponse response = createResponse(uri);
-                ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, ctx.getChannel(),
-                        Channels.future(ctx.getChannel()), response, e.getRemoteAddress()));
-                path1ResponseFuture.setSuccess();
-            }
+            ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, false, ctx.getChannel(),
+                    Channels.future(ctx.getChannel()), createInitialChunk(), e.getRemoteAddress()));
+
+            timer.newTimeout(new ChunkWriter(ctx, e, uri, sequence, 0), 0, MILLISECONDS);
         }
 
-        private static HttpResponse createResponse(final String uri) {
+        private class ChunkWriter implements TimerTask {
+            private final ChannelHandlerContext ctx;
+            private final MessageEvent e;
+            private final String uri;
+            private final int sequence;
+            private final int count;
+
+            public ChunkWriter(final ChannelHandlerContext ctx, final MessageEvent e, final String uri,
+                               final int sequence, final int count) {
+                this.ctx = ctx;
+                this.e = e;
+                this.uri = uri;
+                this.sequence = sequence;
+                this.count = count;
+            }
+
+            @Override
+            public void run(final Timeout timeout) {
+                if (sendFinalChunk.get() && count > 0) {
+                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, true, ctx.getChannel(),
+                            Channels.future(ctx.getChannel()), createFinalChunk(), e.getRemoteAddress()));
+                } else {
+                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, false, ctx.getChannel(),
+                            Channels.future(ctx.getChannel()), createChunk(uri), e.getRemoteAddress()));
+                    timer.newTimeout(new ChunkWriter(ctx, e, uri, sequence, count + 1), 0, MILLISECONDS);
+
+                    if (uri.equals(PATH2)) {
+                        sendFinalChunk.set(true);
+                    }
+                }
+            }
+
+        }
+
+        private HttpResponse createInitialChunk() {
             final HttpResponse response = new DefaultHttpResponse(HTTP_1_1, OK);
-            response.setContent(copiedBuffer(SOME_RESPONSE_TEXT + uri, UTF_8));
             response.setHeader(CONTENT_TYPE, CONTENT_TYPE_TEXT);
-            response.setHeader(CONTENT_LENGTH, response.getContent().readableBytes());
             response.setHeader(CONNECTION, KEEP_ALIVE);
+            response.setHeader(TRANSFER_ENCODING, CHUNKED);
             return response;
         }
+
+        private HttpChunk createChunk(final String uri) {
+            return new DefaultHttpChunk(copiedBuffer(SOME_RESPONSE_TEXT + uri, UTF_8));
+        }
+
+        private HttpChunk createFinalChunk() {
+            return new DefaultHttpChunk(EMPTY_BUFFER);
+        }
+
     }
 }
