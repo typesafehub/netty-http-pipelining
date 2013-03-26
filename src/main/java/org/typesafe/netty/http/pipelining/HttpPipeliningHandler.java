@@ -8,8 +8,7 @@ import java.util.PriorityQueue;
 
 /**
  * Implements HTTP pipelining ordering, ensuring that responses are completely served in the same order as their
- * corresponding requests. This class is optimised given the use of BufferedWriteHandler. Messages are flushed to the
- * network buffer with a minimal number of operations.
+ * corresponding requests.
  *
  * @author Christopher Hunt
  */
