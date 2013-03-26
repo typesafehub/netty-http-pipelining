@@ -1,9 +1,7 @@
 package org.typesafe.netty.http.pipelining;
 
 import org.jboss.netty.channel.*;
-import org.jboss.netty.channel.socket.nio.NioSocketChannelConfig;
 import org.jboss.netty.handler.codec.http.HttpRequest;
-import org.jboss.netty.handler.queue.BufferedWriteHandler;
 
 import java.util.Comparator;
 import java.util.PriorityQueue;
@@ -15,7 +13,7 @@ import java.util.PriorityQueue;
  *
  * @author Christopher Hunt
  */
-public class HttpPipeliningHandler extends BufferedWriteHandler {
+public class HttpPipeliningHandler extends SimpleChannelHandler {
 
     public static final int MAX_EVENTS_HELD = 10000;
 
@@ -36,8 +34,6 @@ public class HttpPipeliningHandler extends BufferedWriteHandler {
      *                      memory if this was the case.
      */
     public HttpPipeliningHandler(final int maxEventsHeld) {
-        super(true);
-
         this.maxEventsHeld = maxEventsHeld;
 
         holdingQueue = new PriorityQueue<OrderedDownstreamMessageEvent>(maxEventsHeld, new Comparator<OrderedDownstreamMessageEvent>() {
@@ -58,17 +54,6 @@ public class HttpPipeliningHandler extends BufferedWriteHandler {
     }
 
     @Override
-    public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-        final ChannelConfig cfg = e.getChannel().getConfig();
-        if (cfg instanceof NioSocketChannelConfig) {
-            // Lower the watermark to increase the chance of consolidation.
-            final NioSocketChannelConfig nioCfg = (NioSocketChannelConfig) cfg;
-            nioCfg.setWriteBufferLowWaterMark(0);
-        }
-        super.channelOpen(ctx, e);
-    }
-
-    @Override
     public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent e) {
         final Object msg = e.getMessage();
         if (msg instanceof HttpRequest) {
@@ -86,27 +71,15 @@ public class HttpPipeliningHandler extends BufferedWriteHandler {
 
                 while (!holdingQueue.isEmpty() && holdingQueue.peek().getSequence() == nextRequiredSequence) {
                     final OrderedDownstreamMessageEvent nextEvent = holdingQueue.poll();
-                    super.writeRequested(ctx, nextEvent);
+                    ctx.sendDownstream(nextEvent);
                     if (nextEvent.isLast()) {
                         ++nextRequiredSequence;
                     }
                 }
 
-                if (e.getChannel().isWritable()) {
-                    flush();
-                }
-
             } else {
                 Channels.disconnect(e.getChannel());
             }
-
-        }
-    }
-
-    @Override
-    public void channelInterestChanged(final ChannelHandlerContext ctx, final ChannelStateEvent e) {
-        if (e.getChannel().isWritable()) {
-            flush();
         }
     }
 }
