@@ -33,8 +33,8 @@ import static org.junit.Assert.assertTrue;
 
 public class HttpPipeliningHandlerTest {
 
-    private static final long RESPONSE_TIMEOUT = 1000L;
-    private static final long CONNECTION_TIMEOUT = 1000L;
+    private static final long RESPONSE_TIMEOUT = 10000L;
+    private static final long CONNECTION_TIMEOUT = 10000L;
     private static final String CONTENT_TYPE_TEXT = "text/plain; charset=UTF-8";
     private static final InetSocketAddress HOST_ADDR = new InetSocketAddress("127.0.0.1", 9080);
     private static final String PATH1 = "/1";
@@ -100,7 +100,7 @@ public class HttpPipeliningHandlerTest {
 
     @Test
     public void shouldReturnMessagesInOrder() throws InterruptedException {
-        responsesIn = new CountDownLatch(2);
+        responsesIn = new CountDownLatch(1);
         responses.clear();
 
         final ChannelFuture connectionFuture = clientBootstrap.connect(HOST_ADDR);
@@ -131,10 +131,12 @@ public class HttpPipeliningHandlerTest {
             final Object message = e.getMessage();
             if (message instanceof HttpChunk) {
                 final HttpChunk response = (HttpChunk) e.getMessage();
-                if (response.getContent().readable()) {
-                    responses.add(response.getContent().toString(UTF_8));
-                } else {
-                    responsesIn.countDown();
+                if (!response.isLast()) {
+                    final String content = response.getContent().toString(UTF_8);
+                    responses.add(content);
+                    if (content.equals(SOME_RESPONSE_TEXT + PATH2)) {
+                        responsesIn.countDown();
+                    }
                 }
             }
         }
