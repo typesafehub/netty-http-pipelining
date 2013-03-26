@@ -43,7 +43,12 @@ public class HttpPipeliningHandler extends BufferedWriteHandler {
         holdingQueue = new PriorityQueue<OrderedDownstreamMessageEvent>(maxEventsHeld, new Comparator<OrderedDownstreamMessageEvent>() {
             @Override
             public int compare(OrderedDownstreamMessageEvent o1, OrderedDownstreamMessageEvent o2) {
-                return o1.getSequence() - o2.getSequence();
+                final int delta = o1.getSequence() - o2.getSequence();
+                if (delta == 0) {
+                    return o1.getSubSequence() - o2.getSubSequence();
+                } else {
+                    return delta;
+                }
             }
         });
     }

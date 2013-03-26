@@ -152,10 +152,15 @@ public class HttpPipeliningHandlerTest {
             final int sequence = ((OrderedUpstreamMessageEvent) e).getSequence();
             final String uri = request.getUri();
 
-            ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, false, ctx.getChannel(),
-                    Channels.future(ctx.getChannel()), createInitialChunk(), e.getRemoteAddress()));
+            final HttpResponse initialChunk = new DefaultHttpResponse(HTTP_1_1, OK);
+            initialChunk.setHeader(CONTENT_TYPE, CONTENT_TYPE_TEXT);
+            initialChunk.setHeader(CONNECTION, KEEP_ALIVE);
+            initialChunk.setHeader(TRANSFER_ENCODING, CHUNKED);
 
-            timer.newTimeout(new ChunkWriter(ctx, e, uri, sequence, 0), 0, MILLISECONDS);
+            ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, 0, false, ctx.getChannel(),
+                    Channels.future(ctx.getChannel()), initialChunk, e.getRemoteAddress()));
+
+            timer.newTimeout(new ChunkWriter(ctx, e, uri, sequence, 1), 0, MILLISECONDS);
         }
 
         private class ChunkWriter implements TimerTask {
@@ -163,26 +168,28 @@ public class HttpPipeliningHandlerTest {
             private final MessageEvent e;
             private final String uri;
             private final int sequence;
-            private final int count;
+            private final int subSequence;
 
             public ChunkWriter(final ChannelHandlerContext ctx, final MessageEvent e, final String uri,
-                               final int sequence, final int count) {
+                               final int sequence, final int subSequence) {
                 this.ctx = ctx;
                 this.e = e;
                 this.uri = uri;
                 this.sequence = sequence;
-                this.count = count;
+                this.subSequence = subSequence;
             }
 
             @Override
             public void run(final Timeout timeout) {
-                if (sendFinalChunk.get() && count > 0) {
-                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, true, ctx.getChannel(),
-                            Channels.future(ctx.getChannel()), createFinalChunk(), e.getRemoteAddress()));
+                if (sendFinalChunk.get() && subSequence > 1) {
+                    final HttpChunk finalChunk = new DefaultHttpChunk(EMPTY_BUFFER);
+                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, subSequence, true, ctx.getChannel(),
+                            Channels.future(ctx.getChannel()), finalChunk, e.getRemoteAddress()));
                 } else {
-                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, false, ctx.getChannel(),
-                            Channels.future(ctx.getChannel()), createChunk(uri), e.getRemoteAddress()));
-                    timer.newTimeout(new ChunkWriter(ctx, e, uri, sequence, count + 1), 0, MILLISECONDS);
+                    final HttpChunk chunk = new DefaultHttpChunk(copiedBuffer(SOME_RESPONSE_TEXT + uri, UTF_8));
+                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, subSequence, false, ctx.getChannel(),
+                            Channels.future(ctx.getChannel()), chunk, e.getRemoteAddress()));
+                    timer.newTimeout(new ChunkWriter(ctx, e, uri, sequence, subSequence + 1), 0, MILLISECONDS);
 
                     if (uri.equals(PATH2)) {
                         sendFinalChunk.set(true);
@@ -191,22 +198,5 @@ public class HttpPipeliningHandlerTest {
             }
 
         }
-
-        private HttpResponse createInitialChunk() {
-            final HttpResponse response = new DefaultHttpResponse(HTTP_1_1, OK);
-            response.setHeader(CONTENT_TYPE, CONTENT_TYPE_TEXT);
-            response.setHeader(CONNECTION, KEEP_ALIVE);
-            response.setHeader(TRANSFER_ENCODING, CHUNKED);
-            return response;
-        }
-
-        private HttpChunk createChunk(final String uri) {
-            return new DefaultHttpChunk(copiedBuffer(SOME_RESPONSE_TEXT + uri, UTF_8));
-        }
-
-        private HttpChunk createFinalChunk() {
-            return new DefaultHttpChunk(EMPTY_BUFFER);
-        }
-
     }
 }
