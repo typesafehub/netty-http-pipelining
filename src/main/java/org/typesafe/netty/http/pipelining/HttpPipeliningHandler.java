@@ -61,7 +61,7 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
     }
 
     @Override
-    public synchronized void writeRequested(final ChannelHandlerContext ctx, final MessageEvent e) throws Exception {
+    public void writeRequested(final ChannelHandlerContext ctx, final MessageEvent e) throws Exception {
         if (e instanceof OrderedDownstreamMessageEvent) {
             if (holdingQueue.size() < maxEventsHeld) {
 
