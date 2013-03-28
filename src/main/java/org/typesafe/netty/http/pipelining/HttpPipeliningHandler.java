@@ -1,89 +1,99 @@
 package org.typesafe.netty.http.pipelining;
 
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelHandler;
-import org.jboss.netty.handler.codec.http.HttpRequest;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.channel.*;
+import org.jboss.netty.handler.codec.http.*;
 
-import java.util.Comparator;
-import java.util.PriorityQueue;
+import java.util.LinkedList;
 
-/**
- * Implements HTTP pipelining ordering, ensuring that responses are completely served in the same order as their
- * corresponding requests. NOTE: A side effect of using this handler is that upstream HttpRequest objects will
- * cause the original message event to be effectively transformed into an OrderedUpstreamMessageEvent. Conversely
- * OrderedDownstreamMessageEvent objects are expected to be received for the correlating response objects.
- *
- * @author Christopher Hunt
- */
-public class HttpPipeliningHandler extends SimpleChannelHandler {
+public class HttpPipeliningHandler implements ChannelUpstreamHandler, ChannelDownstreamHandler {
 
-    public static final int MAX_EVENTS_HELD = 10000;
+    private final LinkedList<Channel> channelQueue = new LinkedList<Channel>();
+    private long currentResponseContentLength = -1;
+    private boolean isChunked;
 
-    private final int maxEventsHeld;
-
-    private int sequence;
-    private int nextRequiredSequence;
-
-    private final PriorityQueue<OrderedDownstreamMessageEvent> holdingQueue;
-
-    public HttpPipeliningHandler() {
-        this(MAX_EVENTS_HELD);
+    @Override
+    public void handleDownstream(ChannelHandlerContext ctx, ChannelEvent e) throws Exception {
+        if (e instanceof MessageEvent) {
+            MessageEvent msgEvent = (MessageEvent) e;
+            Object message = msgEvent.getMessage();
+            if (message instanceof HttpResponse) {
+                HttpResponse response = (HttpResponse) message;
+                if (response.getStatus() == HttpResponseStatus.NO_CONTENT || response.getStatus() == HttpResponseStatus.NOT_MODIFIED) {
+                    currentResponseContentLength = 0;
+                } else {
+                    currentResponseContentLength = HttpHeaders.getContentLength(response, -1);
+                }
+                isChunked = response.isChunked();
+                if (!isChunked) {
+                    observeContent(response.getContent(), e.getFuture());
+                }
+            } else if (message instanceof HttpChunk) {
+                HttpChunk chunk = (HttpChunk) message;
+                if (isChunked) {
+                    if (chunk.isLast()) {
+                        popChannelQueue(e.getFuture());
+                    }
+                } else {
+                    observeContent(chunk.getContent(), e.getFuture());
+                }
+            } else if (message instanceof ChannelBuffer) {
+                observeContent((ChannelBuffer) message, e.getFuture());
+            }
+        }
+        ctx.sendDownstream(e);
     }
 
-    /**
-     * @param maxEventsHeld the maximum number of message events that will be retained prior to aborting the channel
-     *                      connection. This is required as events cannot queue up indefintely; we would run out of
-     *                      memory if this was the case.
-     */
-    public HttpPipeliningHandler(final int maxEventsHeld) {
-        this.maxEventsHeld = maxEventsHeld;
+    private void observeContent(ChannelBuffer buffer, ChannelFuture future) {
+        if (currentResponseContentLength >= 0) {
+            currentResponseContentLength -= buffer.readableBytes();
+            if (currentResponseContentLength <= 0) {
+                popChannelQueue(future);
+                currentResponseContentLength = -1;
+            }
+        }
+    }
 
-        holdingQueue = new PriorityQueue<OrderedDownstreamMessageEvent>(maxEventsHeld, new Comparator<OrderedDownstreamMessageEvent>() {
+    private void popChannelQueue(ChannelFuture future) {
+        future.addListener(new ChannelFutureListener() {
             @Override
-            public int compare(OrderedDownstreamMessageEvent o1, OrderedDownstreamMessageEvent o2) {
-                final int delta = o1.getSequence() - o2.getSequence();
-                if (delta == 0) {
-                    return o1.getSubSequence() - o2.getSubSequence();
-                } else {
-                    return delta;
+            public void operationComplete(ChannelFuture future) throws Exception {
+                Channel next;
+                synchronized (channelQueue) {
+                    channelQueue.pop();
+                    next = channelQueue.peek();
+                }
+                if (next instanceof HttpPipeliningChannel) {
+                    if (future.isCancelled()) {
+                        ((HttpPipeliningChannel) next).cancel();
+                    } else {
+                        ((HttpPipeliningChannel) next).proceed();
+                    }
                 }
             }
         });
     }
 
-    public int getMaxEventsHeld() {
-        return maxEventsHeld;
-    }
-
     @Override
-    public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent e) {
-        final Object msg = e.getMessage();
-        if (msg instanceof HttpRequest) {
-            ctx.sendUpstream(new OrderedUpstreamMessageEvent(sequence++, e.getChannel(), msg, e.getRemoteAddress()));
-        }
-    }
-
-    @Override
-    public void writeRequested(final ChannelHandlerContext ctx, final MessageEvent e) throws Exception {
-        if (e instanceof OrderedDownstreamMessageEvent) {
-            if (holdingQueue.size() < maxEventsHeld) {
-
-                final OrderedDownstreamMessageEvent currentEvent = (OrderedDownstreamMessageEvent) e;
-                holdingQueue.add(currentEvent);
-
-                while (!holdingQueue.isEmpty() && holdingQueue.peek().getSequence() == nextRequiredSequence) {
-                    final OrderedDownstreamMessageEvent nextEvent = holdingQueue.poll();
-                    ctx.sendDownstream(nextEvent);
-                    if (nextEvent.isLast()) {
-                        ++nextRequiredSequence;
+    public void handleUpstream(ChannelHandlerContext ctx, ChannelEvent e) throws Exception {
+        // A messages has come from upstream (ie, part of a request)
+        if (e instanceof MessageEvent) {
+            MessageEvent msgEvent = (MessageEvent) e;
+            Object msg = msgEvent.getMessage();
+            if (msg instanceof HttpRequest) {
+                synchronized (channelQueue) {
+                    if (!channelQueue.isEmpty()) {
+                        // This request is pipelined behind another
+                        channelQueue.add(new HttpPipeliningChannel(e.getChannel()));
+                    } else {
+                        // No pipelining, so no need to use the pipelining channel
+                        channelQueue.add(e.getChannel());
                     }
                 }
-
-            } else {
-                Channels.disconnect(e.getChannel());
             }
+            ctx.sendUpstream(new UpstreamMessageEvent(channelQueue.getLast(), msg, msgEvent.getRemoteAddress()));
+        } else {
+            ctx.sendUpstream(e);
         }
     }
 }

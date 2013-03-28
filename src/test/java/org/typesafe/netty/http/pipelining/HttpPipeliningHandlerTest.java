@@ -149,7 +149,6 @@ public class HttpPipeliningHandlerTest {
         public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent e) throws InterruptedException {
             final HttpRequest request = (HttpRequest) e.getMessage();
 
-            final int sequence = ((OrderedUpstreamMessageEvent) e).getSequence();
             final String uri = request.getUri();
 
             final HttpResponse initialChunk = new DefaultHttpResponse(HTTP_1_1, OK);
@@ -157,25 +156,22 @@ public class HttpPipeliningHandlerTest {
             initialChunk.setHeader(CONNECTION, KEEP_ALIVE);
             initialChunk.setHeader(TRANSFER_ENCODING, CHUNKED);
 
-            ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, 0, false, ctx.getChannel(),
-                    Channels.future(ctx.getChannel()), initialChunk, e.getRemoteAddress()));
+            Channels.write(ctx.getChannel(), initialChunk);
 
-            timer.newTimeout(new ChunkWriter(ctx, e, uri, sequence, 1), 0, MILLISECONDS);
+            timer.newTimeout(new ChunkWriter(ctx, e, uri, 1), 0, MILLISECONDS);
         }
 
         private class ChunkWriter implements TimerTask {
             private final ChannelHandlerContext ctx;
             private final MessageEvent e;
             private final String uri;
-            private final int sequence;
             private final int subSequence;
 
             public ChunkWriter(final ChannelHandlerContext ctx, final MessageEvent e, final String uri,
-                               final int sequence, final int subSequence) {
+                               final int subSequence) {
                 this.ctx = ctx;
                 this.e = e;
                 this.uri = uri;
-                this.sequence = sequence;
                 this.subSequence = subSequence;
             }
 
@@ -183,13 +179,11 @@ public class HttpPipeliningHandlerTest {
             public void run(final Timeout timeout) {
                 if (sendFinalChunk.get() && subSequence > 1) {
                     final HttpChunk finalChunk = new DefaultHttpChunk(EMPTY_BUFFER);
-                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, subSequence, true, ctx.getChannel(),
-                            Channels.future(ctx.getChannel()), finalChunk, e.getRemoteAddress()));
+                    Channels.write(ctx.getChannel(), finalChunk);
                 } else {
                     final HttpChunk chunk = new DefaultHttpChunk(copiedBuffer(SOME_RESPONSE_TEXT + uri, UTF_8));
-                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(sequence, subSequence, false, ctx.getChannel(),
-                            Channels.future(ctx.getChannel()), chunk, e.getRemoteAddress()));
-                    timer.newTimeout(new ChunkWriter(ctx, e, uri, sequence, subSequence + 1), 0, MILLISECONDS);
+                    Channels.write(ctx.getChannel(), chunk);
+                    timer.newTimeout(new ChunkWriter(ctx, e, uri, subSequence + 1), 0, MILLISECONDS);
 
                     if (uri.equals(PATH2)) {
                         sendFinalChunk.set(true);
