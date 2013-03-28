@@ -8,6 +8,7 @@ import org.jboss.netty.handler.codec.http.HttpRequest;
 
 import java.util.Comparator;
 import java.util.PriorityQueue;
+import java.util.Queue;
 
 /**
  * Implements HTTP pipelining ordering, ensuring that responses are completely served in the same order as their
@@ -26,7 +27,7 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
     private int sequence;
     private int nextRequiredSequence;
 
-    private final PriorityQueue<OrderedDownstreamMessageEvent> holdingQueue;
+    private final Queue<OrderedDownstreamMessageEvent> holdingQueue;
 
     public HttpPipeliningHandler() {
         this(MAX_EVENTS_HELD);
@@ -68,22 +69,24 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
     @Override
     public void writeRequested(final ChannelHandlerContext ctx, final MessageEvent e) throws Exception {
         if (e instanceof OrderedDownstreamMessageEvent) {
-            if (holdingQueue.size() < maxEventsHeld) {
+            synchronized (holdingQueue) {
+                if (holdingQueue.size() < maxEventsHeld) {
 
-                final OrderedDownstreamMessageEvent currentEvent = (OrderedDownstreamMessageEvent) e;
-                holdingQueue.add(currentEvent);
+                    final OrderedDownstreamMessageEvent currentEvent = (OrderedDownstreamMessageEvent) e;
+                    holdingQueue.add(currentEvent);
 
-                while (!holdingQueue.isEmpty() &&
-                        holdingQueue.peek().getOrderedUpstreamMessageEvent().getSequence() == nextRequiredSequence) {
-                    final OrderedDownstreamMessageEvent nextEvent = holdingQueue.poll();
-                    ctx.sendDownstream(nextEvent);
-                    if (nextEvent.isLast()) {
-                        ++nextRequiredSequence;
+                    while (!holdingQueue.isEmpty() &&
+                            holdingQueue.peek().getOrderedUpstreamMessageEvent().getSequence() == nextRequiredSequence) {
+                        final OrderedDownstreamMessageEvent nextEvent = holdingQueue.poll();
+                        ctx.sendDownstream(nextEvent);
+                        if (nextEvent.isLast()) {
+                            ++nextRequiredSequence;
+                        }
                     }
-                }
 
-            } else {
-                Channels.disconnect(e.getChannel());
+                } else {
+                    Channels.close(e.getChannel());
+                }
             }
         }
     }
