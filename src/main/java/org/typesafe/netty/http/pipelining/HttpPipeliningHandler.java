@@ -43,9 +43,9 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
         holdingQueue = new PriorityQueue<OrderedDownstreamMessageEvent>(maxEventsHeld, new Comparator<OrderedDownstreamMessageEvent>() {
             @Override
             public int compare(OrderedDownstreamMessageEvent o1, OrderedDownstreamMessageEvent o2) {
-                final int delta = o1.getSequence() - o2.getSequence();
+                final int delta = o1.getOrderedUpstreamMessageEvent().getSequence() - o2.getOrderedUpstreamMessageEvent().getSequence();
                 if (delta == 0) {
-                    return o1.getSubSequence() - o2.getSubSequence();
+                    return o1.getSubsequence() - o2.getSubsequence();
                 } else {
                     return delta;
                 }
@@ -73,7 +73,8 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
                 final OrderedDownstreamMessageEvent currentEvent = (OrderedDownstreamMessageEvent) e;
                 holdingQueue.add(currentEvent);
 
-                while (!holdingQueue.isEmpty() && holdingQueue.peek().getSequence() == nextRequiredSequence) {
+                while (!holdingQueue.isEmpty() &&
+                        holdingQueue.peek().getOrderedUpstreamMessageEvent().getSequence() == nextRequiredSequence) {
                     final OrderedDownstreamMessageEvent nextEvent = holdingQueue.poll();
                     ctx.sendDownstream(nextEvent);
                     if (nextEvent.isLast()) {

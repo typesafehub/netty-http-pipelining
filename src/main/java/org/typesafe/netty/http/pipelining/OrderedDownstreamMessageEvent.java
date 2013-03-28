@@ -1,10 +1,7 @@
 package org.typesafe.netty.http.pipelining;
 
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFuture;
+import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.DownstreamMessageEvent;
-
-import java.net.SocketAddress;
 
 /**
  * Permits downstream message events to be ordered and signalled as to whether more are to come for a given sequence.
@@ -12,41 +9,40 @@ import java.net.SocketAddress;
  * @author Christopher Hunt
  */
 public class OrderedDownstreamMessageEvent extends DownstreamMessageEvent {
-    final int sequence;
-    final int subSequence;
+
+    final OrderedUpstreamMessageEvent oue;
+    final int subsequence;
     final boolean last;
 
     /**
      * Convenience constructor signifying that this downstream event is the last one for the given sequence, and that
      * there is only one response.
      */
-    public OrderedDownstreamMessageEvent(final int sequence, final Channel channel,
-                                         final ChannelFuture future, final Object message,
-                                         final SocketAddress remoteAddress) {
-        this(sequence, 0, true, channel, future, message, remoteAddress);
+    public OrderedDownstreamMessageEvent(final OrderedUpstreamMessageEvent oe,
+                                         final Object message) {
+        this(oe, 0, true, message);
     }
 
     /**
-     * @param sequence    the sequence number that this reply relates to in terms of its OrderedUpstreamMessageEvent
-     * @param subsequence the sequence within the sequence.
+     * @param oue         the OrderedUpstreamMessageEvent that this response is associated with
+     * @param subsequence the sequence within the sequence
      * @param last        when set to true this indicates that there are no more responses to be received for the
      *                    original OrderedUpstreamMessageEvent
      */
-    public OrderedDownstreamMessageEvent(final int sequence, final int subsequence, boolean last, final Channel channel,
-                                         final ChannelFuture future, final Object message,
-                                         final SocketAddress remoteAddress) {
-        super(channel, future, message, remoteAddress);
-        this.sequence = sequence;
-        this.subSequence = subsequence;
+    public OrderedDownstreamMessageEvent(final OrderedUpstreamMessageEvent oue, final int subsequence, boolean last,
+                                         final Object message) {
+        super(oue.getChannel(), Channels.future(oue.getChannel()), message, oue.getRemoteAddress());
+        this.oue = oue;
+        this.subsequence = subsequence;
         this.last = last;
     }
 
-    public int getSequence() {
-        return sequence;
+    public OrderedUpstreamMessageEvent getOrderedUpstreamMessageEvent() {
+        return oue;
     }
 
-    public int getSubSequence() {
-        return subSequence;
+    public int getSubsequence() {
+        return subsequence;
     }
 
     public boolean isLast() {
