@@ -1,6 +1,9 @@
 package org.typesafe.netty.http.pipelining;
 
-import org.jboss.netty.channel.*;
+import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.Channels;
+import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.SimpleChannelHandler;
 import org.jboss.netty.handler.codec.http.HttpRequest;
 
 import java.util.Comparator;
@@ -8,7 +11,9 @@ import java.util.PriorityQueue;
 
 /**
  * Implements HTTP pipelining ordering, ensuring that responses are completely served in the same order as their
- * corresponding requests.
+ * corresponding requests. NOTE: A side effect of using this handler is that upstream HttpRequest objects will
+ * cause the original message event to be effectively transformed into an OrderedUpstreamMessageEvent. Conversely
+ * OrderedDownstreamMessageEvent objects are expected to be received for the correlating response objects.
  *
  * @author Christopher Hunt
  */
