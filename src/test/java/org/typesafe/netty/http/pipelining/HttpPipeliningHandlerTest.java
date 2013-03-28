@@ -186,7 +186,7 @@ public class HttpPipeliningHandlerTest {
                 } else {
                     final HttpChunk chunk = new DefaultHttpChunk(copiedBuffer(SOME_RESPONSE_TEXT + uri, UTF_8));
                     ctx.sendDownstream(new OrderedDownstreamMessageEvent(oue, subSequence, false, chunk));
-                    
+
                     timer.newTimeout(new ChunkWriter(ctx, e, uri, oue, subSequence + 1), 0, MILLISECONDS);
 
                     if (uri.equals(PATH2)) {
