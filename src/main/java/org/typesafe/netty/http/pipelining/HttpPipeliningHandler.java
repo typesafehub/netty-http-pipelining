@@ -26,6 +26,7 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
 
     private int sequence;
     private int nextRequiredSequence;
+    private int nextRequiredSubsequence;
 
     private final Queue<OrderedDownstreamMessageEvent> holdingQueue;
 
@@ -75,12 +76,19 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
                     final OrderedDownstreamMessageEvent currentEvent = (OrderedDownstreamMessageEvent) e;
                     holdingQueue.add(currentEvent);
 
-                    while (!holdingQueue.isEmpty() &&
-                            holdingQueue.peek().getOrderedUpstreamMessageEvent().getSequence() == nextRequiredSequence) {
-                        final OrderedDownstreamMessageEvent nextEvent = holdingQueue.poll();
+                    while (!holdingQueue.isEmpty()) {
+                        final OrderedDownstreamMessageEvent nextEvent = holdingQueue.peek();
+                        if (nextEvent.getOrderedUpstreamMessageEvent().getSequence() != nextRequiredSequence |
+                                nextEvent.getSubsequence() != nextRequiredSubsequence) {
+                            break;
+                        }
+                        holdingQueue.remove();
                         ctx.sendDownstream(nextEvent);
                         if (nextEvent.isLast()) {
                             ++nextRequiredSequence;
+                            nextRequiredSubsequence = 0;
+                        } else {
+                            ++nextRequiredSubsequence;
                         }
                     }
 
