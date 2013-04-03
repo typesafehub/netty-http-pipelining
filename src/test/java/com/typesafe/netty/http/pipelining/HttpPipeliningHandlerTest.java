@@ -1,5 +1,8 @@
-package org.typesafe.netty.http.pipelining;
+package com.typesafe.netty.http.pipelining;
 
+import com.typesafe.netty.http.pipelining.HttpPipeliningHandler;
+import com.typesafe.netty.http.pipelining.OrderedDownstreamMessageEvent;
+import com.typesafe.netty.http.pipelining.OrderedUpstreamMessageEvent;
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.*;

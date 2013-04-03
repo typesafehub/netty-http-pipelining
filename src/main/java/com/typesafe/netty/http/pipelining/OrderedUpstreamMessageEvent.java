@@ -1,4 +1,4 @@
-package org.typesafe.netty.http.pipelining;
+package com.typesafe.netty.http.pipelining;
 
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.UpstreamMessageEvent;
