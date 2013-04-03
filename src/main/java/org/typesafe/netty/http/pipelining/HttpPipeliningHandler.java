@@ -64,6 +64,8 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
         final Object msg = e.getMessage();
         if (msg instanceof HttpRequest) {
             ctx.sendUpstream(new OrderedUpstreamMessageEvent(sequence++, e.getChannel(), msg, e.getRemoteAddress()));
+        } else {
+            ctx.sendUpstream(e);
         }
     }
 
@@ -96,6 +98,8 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
                     Channels.close(e.getChannel());
                 }
             }
+        } else {
+            ctx.sendDownstream(e);
         }
     }
 }
