@@ -20,4 +20,15 @@
             <version>4.11</version>
         </dependency>
     </dependencies>
+
+    <distributionManagement>
+        <repository>
+            <id>typesafe-releases</id>
+            <url>https://typesafe.artifactoryonline.com/typesafe/maven-releases/</url>
+        </repository>
+        <snapshotRepository>
+            <id>typesafe-snapshots</id>
+            <url>https://typesafe.artifactoryonline.com/typesafe/maven-snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
 </project>
