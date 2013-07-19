@@ -1,8 +1,5 @@
 package com.typesafe.netty.http.pipelining;
 
-import com.typesafe.netty.http.pipelining.HttpPipeliningHandler;
-import com.typesafe.netty.http.pipelining.OrderedDownstreamMessageEvent;
-import com.typesafe.netty.http.pipelining.OrderedUpstreamMessageEvent;
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.*;
@@ -160,7 +157,7 @@ public class HttpPipeliningHandlerTest {
             initialChunk.setHeader(CONNECTION, KEEP_ALIVE);
             initialChunk.setHeader(TRANSFER_ENCODING, CHUNKED);
 
-            ctx.sendDownstream(new OrderedDownstreamMessageEvent(oue, 0, false, initialChunk));
+            ctx.sendDownstream(new OrderedDownstreamChannelEvent(oue, 0, false, initialChunk));
 
             timer.newTimeout(new ChunkWriter(ctx, e, uri, oue, 1), 0, MILLISECONDS);
         }
@@ -185,10 +182,10 @@ public class HttpPipeliningHandlerTest {
             public void run(final Timeout timeout) {
                 if (sendFinalChunk.get() && subSequence > 1) {
                     final HttpChunk finalChunk = new DefaultHttpChunk(EMPTY_BUFFER);
-                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(oue, subSequence, true, finalChunk));
+                    ctx.sendDownstream(new OrderedDownstreamChannelEvent(oue, subSequence, true, finalChunk));
                 } else {
                     final HttpChunk chunk = new DefaultHttpChunk(copiedBuffer(SOME_RESPONSE_TEXT + uri, UTF_8));
-                    ctx.sendDownstream(new OrderedDownstreamMessageEvent(oue, subSequence, false, chunk));
+                    ctx.sendDownstream(new OrderedDownstreamChannelEvent(oue, subSequence, false, chunk));
 
                     timer.newTimeout(new ChunkWriter(ctx, e, uri, oue, subSequence + 1), 0, MILLISECONDS);
 
