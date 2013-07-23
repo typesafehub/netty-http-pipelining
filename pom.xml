@@ -4,7 +4,7 @@
 
     <groupId>com.typesafe.netty</groupId>
     <artifactId>netty-http-pipelining</artifactId>
-    <version>1.1.1-SNAPSHOT</version>
+    <version>1.1.1</version>
 
     <description>This library provides a handler and some new message types that enable http pipelining in Netty
     </description>
