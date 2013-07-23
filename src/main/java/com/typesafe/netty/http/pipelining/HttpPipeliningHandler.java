@@ -17,6 +17,7 @@ import java.util.Queue;
  */
 public class HttpPipeliningHandler extends SimpleChannelHandler {
 
+    public static final int INITIAL_EVENTS_HELD = 3;
     public static final int MAX_EVENTS_HELD = 10000;
 
     private final int maxEventsHeld;
@@ -39,7 +40,7 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
     public HttpPipeliningHandler(final int maxEventsHeld) {
         this.maxEventsHeld = maxEventsHeld;
 
-        holdingQueue = new PriorityQueue<OrderedDownstreamChannelEvent>(maxEventsHeld, new Comparator<OrderedDownstreamChannelEvent>() {
+        holdingQueue = new PriorityQueue<OrderedDownstreamChannelEvent>(INITIAL_EVENTS_HELD, new Comparator<OrderedDownstreamChannelEvent>() {
             @Override
             public int compare(OrderedDownstreamChannelEvent o1, OrderedDownstreamChannelEvent o2) {
                 final int delta = o1.getOrderedUpstreamMessageEvent().getSequence() - o2.getOrderedUpstreamMessageEvent().getSequence();
