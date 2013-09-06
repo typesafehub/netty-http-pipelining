@@ -3,9 +3,7 @@ package com.typesafe.netty.http.pipelining;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.http.HttpRequest;
 
-import java.util.Comparator;
-import java.util.PriorityQueue;
-import java.util.Queue;
+import java.util.*;
 
 /**
  * Implements HTTP pipelining ordering, ensuring that responses are completely served in the same order as their
@@ -71,6 +69,10 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
     public void handleDownstream(ChannelHandlerContext ctx, ChannelEvent e)
             throws Exception {
         if (e instanceof OrderedDownstreamChannelEvent) {
+
+            boolean channelShouldClose = false;
+            final List<ChannelEvent> downstreamEvents = new ArrayList<ChannelEvent>(INITIAL_EVENTS_HELD);
+
             synchronized (holdingQueue) {
                 if (holdingQueue.size() < maxEventsHeld) {
 
@@ -84,7 +86,7 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
                             break;
                         }
                         holdingQueue.remove();
-                        ctx.sendDownstream(nextEvent.getChannelEvent());
+                        downstreamEvents.add(nextEvent.getChannelEvent());
                         if (nextEvent.isLast()) {
                             ++nextRequiredSequence;
                             nextRequiredSubsequence = 0;
@@ -94,7 +96,15 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
                     }
 
                 } else {
-                    Channels.close(e.getChannel());
+                    channelShouldClose = true;
+                }
+            }
+
+            if (channelShouldClose) {
+                Channels.close(e.getChannel());
+            } else {
+                for (final ChannelEvent downstreamEvent : downstreamEvents) {
+                    ctx.sendDownstream(downstreamEvent);
                 }
             }
         } else {
