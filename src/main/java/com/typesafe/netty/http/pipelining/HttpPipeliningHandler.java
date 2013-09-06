@@ -71,7 +71,6 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
         if (e instanceof OrderedDownstreamChannelEvent) {
 
             boolean channelShouldClose = false;
-            final List<ChannelEvent> downstreamEvents = new ArrayList<ChannelEvent>(INITIAL_EVENTS_HELD);
 
             synchronized (holdingQueue) {
                 if (holdingQueue.size() < maxEventsHeld) {
@@ -86,7 +85,7 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
                             break;
                         }
                         holdingQueue.remove();
-                        downstreamEvents.add(nextEvent.getChannelEvent());
+                        ctx.sendDownstream(nextEvent.getChannelEvent());
                         if (nextEvent.isLast()) {
                             ++nextRequiredSequence;
                             nextRequiredSubsequence = 0;
@@ -102,10 +101,6 @@ public class HttpPipeliningHandler extends SimpleChannelHandler {
 
             if (channelShouldClose) {
                 Channels.close(e.getChannel());
-            } else {
-                for (final ChannelEvent downstreamEvent : downstreamEvents) {
-                    ctx.sendDownstream(downstreamEvent);
-                }
             }
         } else {
             super.handleDownstream(ctx, e);
