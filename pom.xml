@@ -32,8 +32,8 @@
     <dependencies>
         <dependency>
             <groupId>io.netty</groupId>
-            <artifactId>netty</artifactId>
-            <version>3.6.3.Final</version>
+            <artifactId>netty-all</artifactId>
+            <version>5.0.0.Alpha2-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
@@ -48,6 +48,14 @@
         <developerConnection>scm:git:git@github.com:typesafehub/netty-http-pipelining.git</developerConnection>
         <url>scm:git://github.com/typesafehub/netty-http-pipelining.git</url>
     </scm>
+
+    <repositories>
+       <repository>
+          <id>my-repo1</id>
+          <name>your custom repo</name>
+          <url>http://clinker.netty.io/nexus/content/repositories/snapshots/</url>
+       </repository>
+    </repositories>
 
     <distributionManagement>
         <repository>
