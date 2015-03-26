@@ -43,12 +43,26 @@
         </dependency>
     </dependencies>
 
+    <build>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.2</version>
+          <configuration>
+            <source>1.7</source>
+            <target>1.7</target>
+          </configuration>
+        </plugin>
+      </plugins>
+    </build>
+
     <scm>
         <connection>scm:git://github.com/typesafehub/netty-http-pipelining.git</connection>
         <developerConnection>scm:git:git@github.com:typesafehub/netty-http-pipelining.git</developerConnection>
         <url>scm:git://github.com/typesafehub/netty-http-pipelining.git</url>
       <tag>HEAD</tag>
-  </scm>
+    </scm>
 
     <distributionManagement>
         <repository>
