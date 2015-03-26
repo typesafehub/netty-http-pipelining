@@ -110,11 +110,11 @@ public class HttpPipeliningHandlerTest {
 
         final HttpRequest request1 = new DefaultHttpRequest(
                 HTTP_1_1, HttpMethod.GET, PATH1);
-        request1.setHeader(HOST, HOST_ADDR.toString());
+        request1.headers().set(HOST, HOST_ADDR.toString());
 
         final HttpRequest request2 = new DefaultHttpRequest(
                 HTTP_1_1, HttpMethod.GET, PATH2);
-        request2.setHeader(HOST, HOST_ADDR.toString());
+        request2.headers().set(HOST, HOST_ADDR.toString());
 
         clientChannel.write(request1);
         clientChannel.write(request2);
@@ -153,9 +153,9 @@ public class HttpPipeliningHandlerTest {
             final String uri = request.getUri();
 
             final HttpResponse initialChunk = new DefaultHttpResponse(HTTP_1_1, OK);
-            initialChunk.setHeader(CONTENT_TYPE, CONTENT_TYPE_TEXT);
-            initialChunk.setHeader(CONNECTION, KEEP_ALIVE);
-            initialChunk.setHeader(TRANSFER_ENCODING, CHUNKED);
+            initialChunk.headers().set(CONTENT_TYPE, CONTENT_TYPE_TEXT);
+            initialChunk.headers().set(CONNECTION, KEEP_ALIVE);
+            initialChunk.headers().set(TRANSFER_ENCODING, CHUNKED);
 
             ctx.sendDownstream(new OrderedDownstreamChannelEvent(oue, 0, false, initialChunk));
 
