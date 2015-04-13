@@ -4,7 +4,7 @@
 
     <groupId>com.typesafe.netty</groupId>
     <artifactId>netty-http-pipelining</artifactId>
-    <version>1.1.4-SNAPSHOT</version>
+    <version>1.1.4</version>
 
     <name>${project.groupId}:${project.artifactId}</name>
     <description>This library provides a handler and some new message types that enable http pipelining in Netty</description>
@@ -142,7 +142,7 @@
         <connection>scm:git://github.com/typesafehub/netty-http-pipelining.git</connection>
         <developerConnection>scm:git:git@github.com:typesafehub/netty-http-pipelining.git</developerConnection>
         <url>scm:git://github.com/typesafehub/netty-http-pipelining.git</url>
-        <tag>HEAD</tag>
+        <tag>netty-http-pipelining-1.1.4</tag>
     </scm>
 
     <distributionManagement>
