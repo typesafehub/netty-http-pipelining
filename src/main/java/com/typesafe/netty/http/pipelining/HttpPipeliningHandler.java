@@ -3,6 +3,7 @@ package com.typesafe.netty.http.pipelining;
 
 import io.netty.channel.*;
 import io.netty.handler.codec.http.*;
+import io.netty.util.ReferenceCountUtil;
 import io.netty.util.collection.IntObjectHashMap;
 import io.netty.util.collection.IntObjectMap;
 
@@ -58,6 +59,11 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
      * If the high watermark has been exceeded, whether a channel read complete has occurred.
      */
     private boolean channelReadCompleteOccurred = false;
+
+    /**
+     * Whether the channel is inactive - if it's inactive, we should not buffer events to prevent leaks.
+     */
+    private boolean inactive = true;
 
     /**
      * A write message with a promise of when it's written.
@@ -220,12 +226,35 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
                 flushNextSequences(ctx);
             }
         } else {
-            List<WriteMessage> sequenceBuffer = bufferedEvents.get(sequenced.getSequence());
-            if (sequenceBuffer == null) {
-                sequenceBuffer = new ArrayList<>();
-                bufferedEvents.put(sequenced.getSequence(), sequenceBuffer);
+            if (!inactive) {
+                List<WriteMessage> sequenceBuffer = bufferedEvents.get(sequenced.getSequence());
+                if (sequenceBuffer == null) {
+                    sequenceBuffer = new ArrayList<>();
+                    bufferedEvents.put(sequenced.getSequence(), sequenceBuffer);
+                }
+                sequenceBuffer.add(new WriteMessage(sequenced, promise));
             }
-            sequenceBuffer.add(new WriteMessage(sequenced, promise));
+        }
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        cleanup();
+        inactive = true;
+        super.channelInactive(ctx);
+    }
+
+    @Override
+    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+        cleanup();
+        super.handlerRemoved(ctx);
+    }
+
+    private void cleanup() {
+        for (List<WriteMessage> messages: bufferedEvents.values()) {
+            for (WriteMessage message: messages) {
+                ReferenceCountUtil.release(message.message.getMessage());
+            }
         }
     }
 }
